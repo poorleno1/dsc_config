@@ -1,0 +1,193 @@
+configuration Basic
+{
+    # One can evaluate expressions to get the node list
+    # E.g: $AllNodes.Where("Role -eq Web").NodeName
+    Import-DSCResource -ModuleName ComputerManagementDsc -ModuleVersion '8.4.0'
+    Import-DSCResource -ModuleName NetworkingDsc
+
+    node localhost
+    {
+        # Call Resource Provider
+        # E.g: WindowsFeature, File
+        #Import-DscResource -ModuleName @{ModuleName = 'ComputerManagementDsc'; ModuleVersion = '8.4.0' }
+        
+
+        TimeZone westeustandard {
+            IsSingleInstance = 'Yes'
+            TimeZone         = 'W. Europe Standard Time'
+        }
+         
+         
+         File TempDir {
+            DestinationPath = "c:\temp"
+            Type            = "Directory"
+            Ensure          = "Present"
+        }
+
+        Firewall AddFirewallRule
+        {
+            Name                  = 'ZabbixIn10050'
+            DisplayName           = 'Firewall Rule forZabbix'
+            Group                 = 'Zabbix'
+            Ensure                = 'Present'
+            Enabled               = 'True'
+            Profile               = ('Domain')
+            Direction             = 'InBound'
+            LocalPort             = ('10050', '10051')
+            Protocol              = 'TCP'
+            Description           = 'Firewall Rule for Notepad.exe'
+        }
+
+
+        Script DownloadSysinternals {
+            GetScript  = 
+            {
+                @{
+                    GetScript  = $GetScript
+                    SetScript  = $SetScript
+                    TestScript = $TestScript
+                    Result     = ('True' -in (Test-Path "c:\tools\procexp.exe"))
+                }
+            }
+
+            SetScript  = 
+            {
+                Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SysinternalsSuite.zip" -OutFile "c:\temp\SysinternalsSuite.zip"
+                Expand-Archive C:\temp\SysinternalsSuite.zip -DestinationPath c:\tools
+                Remove-Item "c:\temp\SysinternalsSuite.zip"
+            }
+
+            TestScript = 
+            {
+                $Status = ('True' -in (Test-Path "c:\tools\procexp.exe"))
+                $Status -eq $True
+            }
+            DependsOn  = "[File]TempDir" 
+        }
+        
+
+        Script InstallZabbix {
+            GetScript  = 
+            {
+                @{
+                    GetScript  = $GetScript
+                    SetScript  = $SetScript
+                    TestScript = $TestScript
+                    Result     = ('True' -in (Test-Path "c:\zabbix\zabbix_agentd.exe"))
+                }
+            }
+
+            SetScript  = 
+            {
+                
+                    function InstallZabbix ($param1)
+                    {
+                        if (!(Test-Path -Path C:\Zabbix))
+                        {
+                            Write-Host "Creating C:\Zabbix" -ForegroundColor Cyan
+                            New-Item -Path c:\Zabbix -ItemType Directory
+                        }
+                        else
+                        {
+                            Write-Host "Folder c:\Zabbix is already created" -ForegroundColor Cyan
+                        }
+                        If (get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue | Where-Object -Property Status -eq "Running")
+                        {
+                            Write-Host "Zabbix agent started. Stopping" -ForegroundColor Cyan
+                            Stop-Service "Zabbix Agent"
+                            If (get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue | Where-Object -Property Status -eq "Running")
+                            {
+                                Write-Host "Zabbix agent started." -ForegroundColor Red
+                                Break
+                            }
+                            else
+                            {
+                                Write-Host "Zabbix agent is not running." -ForegroundColor Cyan
+                            }
+                        }
+                        else
+                        {
+                            Write-Host "Zabbix agent not started. Continuing." -ForegroundColor Cyan
+                        }
+                        Write-Host "Downloading files." -ForegroundColor Cyan
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Change_hostname.ps1' -OutFile "c:\\Zabbix\\Change_hostname.ps1"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Zabbix_Install.bat' -OutFile "c:\\Zabbix\\Zabbix_Install.bat"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Zabbix_Start.bat' -OutFile "c:\\Zabbix\\Zabbix_Start.bat"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Zabbix_stop.bat' -OutFile "c:\\Zabbix\\Zabbix_stop.bat"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Zabbix_uninstall.bat' -OutFile "c:\\Zabbix\\Zabbix_uninstall.bat"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/zabbix_agentd.exe' -OutFile "c:\\Zabbix\\zabbix_agentd.exe"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/zabbix_agentd.win.conf' -OutFile "c:\\Zabbix\\zabbix_agentd.win.conf"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/zabbix_get.exe' -OutFile "c:\\Zabbix\\zabbix_get.exe"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/zabbix_install_gpo.bat' -OutFile "c:\\Zabbix\\zabbix_install_gpo.bat"
+                        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/zabbix_sender.exe' -OutFile "c:\\Zabbix\\zabbix_sender.exe"
+                        if ($param1)
+                        {
+                            Write-Host "Changing proxy to $($param1)" -ForegroundColor Cyan
+                            C:\zabbix\Change_hostname.ps1 $param1
+                        }
+                        else
+                        {
+                            $str=[System.String]::Empty
+                            C:\zabbix\Change_hostname.ps1 $str
+                        }
+        
+    
+                        if(!(get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue))
+                        {
+                            Write-Host "Installing Zabbix agent." -ForegroundColor Cyan
+                            C:\zabbix\Zabbix_Install.bat
+                            Write-host "Pausing for 3 seconds."
+                            Start-Process "C:\Zabbix\zabbix_agentd.exe" -ArgumentList "--config","C:\Zabbix\zabbix_agentd.win.conf","--install" -WorkingDirectory "c:\zabbix" | Out-Null
+                            #$p.ExitCode
+                            Start-Sleep 3
+                        }
+    
+                        Write-host "Verifying installation." -ForegroundColor Cyan
+                        If (get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue | Where-Object -Property Status -eq "Running")
+                        {
+                            Write-Host "Zabbix agent is running." -ForegroundColor Cyan
+                        }
+                        Elseif (get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue | Where-Object -Property Status -eq "Stopped")
+                        {
+                            Write-host "Zabbix agent is not running. Starting." -ForegroundColor Cyan
+                            Start-Service "Zabbix Agent"
+                            If (get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue | Where-Object -Property Status -eq "Running")
+                            {
+                                Write-Host "Zabbix agent started." -ForegroundColor Cyan
+                            }
+                            else
+                            {
+                                Write-Host "Zabbix agent is not running." -ForegroundColor Red
+                            }
+                        }
+                        else
+                        {
+                            Write-Host "Zabbix agent is not running." -ForegroundColor Red
+                        }
+    
+                    }
+    
+                    #New-NetFirewallRule -DisplayName "zabbixIn10051" -Direction Inbound -Name "ZabbixIn10051" -LocalPort 10051 -Protocol TCP -Action Allow
+                    #New-NetFirewallRule -DisplayName "zabbixIn10050" -Direction Inbound -Name "ZabbixIn10050" -LocalPort 10050 -Protocol TCP -Action Allow
+ 
+                    #AWS
+                    #InstallZabbix  "10.13.112.124"
+                    #azure
+                    #InstallZabbix "10.81.4.164"
+                    #DXC
+                    InstallZabbix "10.81.4.164"
+
+            }
+
+            TestScript = 
+            {
+                $Status = ('True' -in (Test-Path "c:\zabbix\zabbix_agentd.exe"))
+                $Status -eq $True
+            }
+            DependsOn  = "[File]TempDir" 
+        }
+        
+        
+              
+    }
+}

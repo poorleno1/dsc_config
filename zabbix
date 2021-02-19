@@ -2,16 +2,12 @@ configuration Basic
 {
     # One can evaluate expressions to get the node list
     # E.g: $AllNodes.Where("Role -eq Web").NodeName
+    Import-DscResource –ModuleName 'PSDesiredStateConfiguration'
     Import-DSCResource -ModuleName ComputerManagementDsc -ModuleVersion '8.4.0'
     Import-DSCResource -ModuleName NetworkingDsc
 
     node localhost
     {
-        # Call Resource Provider
-        # E.g: WindowsFeature, File
-        #Import-DscResource -ModuleName @{ModuleName = 'ComputerManagementDsc'; ModuleVersion = '8.4.0' }
-        
-
         TimeZone westeustandard {
             IsSingleInstance = 'Yes'
             TimeZone         = 'W. Europe Standard Time'
@@ -52,6 +48,7 @@ configuration Basic
 
             SetScript  = 
             {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SysinternalsSuite.zip" -OutFile "c:\temp\SysinternalsSuite.zip"
                 Expand-Archive C:\temp\SysinternalsSuite.zip -DestinationPath c:\tools
                 Remove-Item "c:\temp\SysinternalsSuite.zip"
@@ -110,6 +107,7 @@ configuration Basic
                             Write-Host "Zabbix agent not started. Continuing." -ForegroundColor Cyan
                         }
                         Write-Host "Downloading files." -ForegroundColor Cyan
+                        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                         Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Change_hostname.ps1' -OutFile "c:\\Zabbix\\Change_hostname.ps1"
                         Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Zabbix_Install.bat' -OutFile "c:\\Zabbix\\Zabbix_Install.bat"
                         Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/poorleno1/zabbix/master/Zabbix_Start.bat' -OutFile "c:\\Zabbix\\Zabbix_Start.bat"
@@ -135,11 +133,10 @@ configuration Basic
                         if(!(get-service -Name "Zabbix Agent" -ErrorAction SilentlyContinue))
                         {
                             Write-Host "Installing Zabbix agent." -ForegroundColor Cyan
-                            C:\zabbix\Zabbix_Install.bat
-                            Write-host "Pausing for 3 seconds."
-                            Start-Process "C:\Zabbix\zabbix_agentd.exe" -ArgumentList "--config","C:\Zabbix\zabbix_agentd.win.conf","--install" -WorkingDirectory "c:\zabbix" | Out-Null
-                            #$p.ExitCode
-                            Start-Sleep 3
+                            #C:\zabbix\Zabbix_Install.bat
+                            Start-Process "C:\Zabbix\zabbix_agentd.exe" -ArgumentList "--config","C:\Zabbix\zabbix_agentd.win.conf","--install" -WorkingDirectory "c:\zabbix" -ErrorAction SilentlyContinue
+                            $p.ExitCode
+                            #Start-Sleep 3
                         }
     
                         Write-host "Verifying installation." -ForegroundColor Cyan
